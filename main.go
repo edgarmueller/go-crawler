@@ -2,63 +2,48 @@ package main
 
 import (
 	"fmt"
-	"net/url"
 	"os"
 	"strconv"
-	"sync"
 )
 
 func main() {
-	if len(os.Args) < 2 {
-		fmt.Println("no website provided")
+	if len(os.Args) < 4 {
+		fmt.Println("not enough arguments provided")
+		fmt.Println("usage: crawler <baseURL> <maxConcurrency> <maxPages>")
 		os.Exit(1)
 	}
 	if len(os.Args) > 4 {
 		fmt.Println("too many arguments provided")
-	}
-	baseURL := os.Args[1]
-	// Default values
-	maxCurrencyStr := "3" // Default max concurrency
-	maxPagesStr := "10"   // Default max pages
-
-	if len(os.Args) > 2 {
-		maxCurrencyStr = os.Args[2]
-	}
-	if len(os.Args) > 3 {
-		maxPagesStr = os.Args[3]
-	}
-
-	maxCurrency, err := strconv.Atoi(maxCurrencyStr)
-	if err != nil {
-		fmt.Println("invalid maxCurrency value:", err)
 		os.Exit(1)
 	}
-	maxPages, err := strconv.Atoi(maxPagesStr)
+	rawBaseURL := os.Args[1]
+	maxConcurrencyString := os.Args[2]
+	maxPagesString := os.Args[3]
+
+	maxConcurrency, err := strconv.Atoi(maxConcurrencyString)
 	if err != nil {
-		fmt.Println("invalid maxCurrency value:", err)
-		os.Exit(1)
+		fmt.Printf("Error - maxConcurrency: %v", err)
+		return
 	}
-
-	fmt.Println("running with max concurrency:", maxCurrency, "and max pages:", maxPages)
-	fmt.Println("starting crawl of:", baseURL)
-	pages := make(map[string]int)
-	parsedBaseURL, err := url.Parse(baseURL)
+	maxPages, err := strconv.Atoi(maxPagesString)
 	if err != nil {
-		fmt.Println("invalid base URL:", err)
-		os.Exit(1)
-	}
-	crawler := &crawler{
-		pages:              pages,
-		baseURL:            parsedBaseURL,
-		mu:                 &sync.Mutex{},
-		concurrencyControl: make(chan struct{}, maxCurrency),
-		wg:                 &sync.WaitGroup{},
-		maxPages:           maxPages,
+		fmt.Printf("Error - maxPages: %v", err)
+		return
 	}
 
-	crawler.wg.Add(1)
-	crawler.crawlPage(baseURL)
-	crawler.wg.Wait()
+	cfg, err := configure(rawBaseURL, maxConcurrency, maxPages)
+	if err != nil {
+		fmt.Printf("Error - configure: %v", err)
+		return
+	}
 
-	crawler.printReport()
+	fmt.Printf("starting crawl of: %s...\n", rawBaseURL)
+
+	cfg.wg.Add(1)
+	go cfg.crawlPage(rawBaseURL)
+	cfg.wg.Wait()
+
+	if err := writeCSVReport(cfg.pages, "report.csv"); err != nil {
+		fmt.Printf("Error - writeCSVReport: %v\n", err)
+	}
 }
